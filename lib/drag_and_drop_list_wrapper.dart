@@ -3,8 +3,6 @@ import 'package:drag_and_drop_lists/drag_and_drop_list_interface.dart';
 import 'package:drag_and_drop_lists/drag_handle.dart';
 import 'package:drag_and_drop_lists/measure_size.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 
 class DragAndDropListWrapper extends StatefulWidget {
   final DragAndDropListInterface dragAndDropList;
@@ -124,7 +122,6 @@ class _DragAndDropListWrapper extends State<DragAndDropListWrapper>
       AnimatedSize(
         duration:
             Duration(milliseconds: widget.parameters.listSizeAnimationDuration),
-        vsync: this,
         alignment: widget.parameters.axis == Axis.vertical
             ? Alignment.bottomCenter
             : Alignment.centerLeft,

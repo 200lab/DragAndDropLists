@@ -24,6 +24,7 @@ import 'package:drag_and_drop_lists/drag_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:scroll_snap_list/scroll_snap_list.dart';
 
 export 'package:drag_and_drop_lists/drag_and_drop_builder_parameters.dart';
 export 'package:drag_and_drop_lists/drag_and_drop_item.dart';
@@ -35,50 +36,51 @@ export 'package:drag_and_drop_lists/drag_and_drop_list_target.dart';
 export 'package:drag_and_drop_lists/drag_and_drop_list_wrapper.dart';
 export 'package:drag_and_drop_lists/drag_handle.dart';
 
-typedef void OnItemReorder(
+typedef OnItemReorder = void Function(
   int oldItemIndex,
   int oldListIndex,
   int newItemIndex,
   int newListIndex,
 );
-typedef void OnItemAdd(
+typedef OnItemAdd = void Function(
   DragAndDropItem newItem,
   int listIndex,
   int newItemIndex,
 );
-typedef void OnListAdd(DragAndDropListInterface newList, int newListIndex);
-typedef void OnListReorder(int oldListIndex, int newListIndex);
-typedef void OnListDraggingChanged(
+typedef OnListAdd = void Function(
+    DragAndDropListInterface newList, int newListIndex);
+typedef OnListReorder = void Function(int oldListIndex, int newListIndex);
+typedef OnListDraggingChanged = void Function(
   DragAndDropListInterface? list,
   bool dragging,
 );
-typedef bool ListOnWillAccept(
+typedef ListOnWillAccept = bool Function(
   DragAndDropListInterface? incoming,
   DragAndDropListInterface? target,
 );
-typedef void ListOnAccept(
+typedef ListOnAccept = void Function(
   DragAndDropListInterface incoming,
   DragAndDropListInterface target,
 );
-typedef bool ListTargetOnWillAccept(
+typedef ListTargetOnWillAccept = bool Function(
     DragAndDropListInterface? incoming, DragAndDropListTarget target);
-typedef void ListTargetOnAccept(
+typedef ListTargetOnAccept = void Function(
     DragAndDropListInterface incoming, DragAndDropListTarget target);
-typedef void OnItemDraggingChanged(
+typedef OnItemDraggingChanged = void Function(
   DragAndDropItem item,
   bool dragging,
 );
-typedef bool ItemOnWillAccept(
+typedef ItemOnWillAccept = bool Function(
   DragAndDropItem? incoming,
   DragAndDropItem target,
 );
-typedef void ItemOnAccept(
+typedef ItemOnAccept = void Function(
   DragAndDropItem incoming,
   DragAndDropItem target,
 );
-typedef bool ItemTargetOnWillAccept(
+typedef ItemTargetOnWillAccept = bool Function(
     DragAndDropItem? incoming, DragAndDropItemTarget target);
-typedef void ItemTargetOnAccept(
+typedef ItemTargetOnAccept = void Function(
   DragAndDropItem incoming,
   DragAndDropListInterface parentList,
   DragAndDropItemTarget target,
@@ -280,6 +282,12 @@ class DragAndDropLists extends StatefulWidget {
   /// disable when setting customDragTargets
   final bool constrainDraggingAxis;
 
+  final bool? enableSnap;
+
+  final Function(int index)? onItemFocusChanged;
+  final PageController? pageController;
+  final Widget Function(int index)? headerBuilder;
+
   DragAndDropLists({
     required this.children,
     required this.onItemReorder,
@@ -330,11 +338,13 @@ class DragAndDropLists extends StatefulWidget {
     this.itemDragHandle,
     this.constrainDraggingAxis = true,
     Key? key,
+    this.enableSnap,
+    this.onItemFocusChanged,
+    this.pageController,
+    this.headerBuilder,
   }) : super(key: key) {
     if (listGhost == null &&
-        children
-            .where((element) => element is DragAndDropListExpansionInterface)
-            .isNotEmpty)
+        children.whereType<DragAndDropListExpansionInterface>().isNotEmpty)
       throw Exception(
           'If using DragAndDropListExpansion, you must provide a non-null listGhost');
     if (sliverList && scrollController == null) {
@@ -361,8 +371,10 @@ class DragAndDropListsState extends State<DragAndDropLists> {
   double? _pointerYPosition;
   double? _pointerXPosition;
   bool _scrolling = false;
-  PageStorageBucket _pageStorageBucket = PageStorageBucket();
+  final PageStorageBucket _pageStorageBucket = PageStorageBucket();
 
+  late final PageController pageController = widget.pageController ??
+      PageController(initialPage: 0, viewportFraction: 1);
   @override
   void initState() {
     if (widget.scrollController != null)
@@ -375,7 +387,7 @@ class DragAndDropListsState extends State<DragAndDropLists> {
 
   @override
   Widget build(BuildContext context) {
-    var parameters = DragAndDropBuilderParameters(
+    final parameters = DragAndDropBuilderParameters(
       listGhost: widget.listGhost,
       listGhostOpacity: widget.listGhostOpacity,
       listDraggingWidth: widget.listDraggingWidth,
@@ -414,11 +426,11 @@ class DragAndDropListsState extends State<DragAndDropLists> {
       disableScrolling: widget.disableScrolling,
     );
 
-    DragAndDropListTarget dragAndDropListTarget = DragAndDropListTarget(
-      child: widget.listTarget,
+    final DragAndDropListTarget dragAndDropListTarget = DragAndDropListTarget(
       parameters: parameters,
       onDropOnLastTarget: _internalOnListDropOnLastTarget,
       lastListTargetSize: widget.lastListTargetSize,
+      child: widget.listTarget,
     );
 
     if (widget.children.isNotEmpty) {
@@ -434,11 +446,11 @@ class DragAndDropListsState extends State<DragAndDropLists> {
       }
 
       if (widget.children
-          .where((e) => e is DragAndDropListExpansionInterface)
+          .whereType<DragAndDropListExpansionInterface>()
           .isNotEmpty) {
         outerListHolder = PageStorage(
-          child: outerListHolder,
           bucket: _pageStorageBucket,
+          child: outerListHolder,
         );
       }
       return outerListHolder;
@@ -447,7 +459,7 @@ class DragAndDropListsState extends State<DragAndDropLists> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            widget.contentsWhenEmpty ?? Text('Empty'),
+            widget.contentsWhenEmpty ?? const Text('Empty'),
             dragAndDropListTarget,
           ],
         ),
@@ -457,8 +469,8 @@ class DragAndDropListsState extends State<DragAndDropLists> {
 
   SliverList _buildSliverList(DragAndDropListTarget dragAndDropListTarget,
       DragAndDropBuilderParameters parameters) {
-    bool includeSeparators = widget.listDivider != null;
-    int childrenCount = _calculateChildrenCount(includeSeparators);
+    final bool includeSeparators = widget.listDivider != null;
+    final int childrenCount = _calculateChildrenCount(includeSeparators);
 
     return SliverList(
       delegate: SliverChildBuilderDelegate(
@@ -484,20 +496,51 @@ class DragAndDropListsState extends State<DragAndDropLists> {
     }
   }
 
-  ListView _buildListView(DragAndDropBuilderParameters parameters,
+  Widget _buildListView(DragAndDropBuilderParameters parameters,
       DragAndDropListTarget dragAndDropListTarget) {
-    return ListView(
+    final items = _buildOuterList(dragAndDropListTarget, parameters);
+
+    if (widget.axis == Axis.vertical || widget.enableSnap == false) {
+      return ListView(
+        scrollDirection: widget.axis,
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: _buildOuterList(dragAndDropListTarget, parameters),
+      );
+    } else if (widget.enableSnap == true) {
+      return PageView.builder(
+        controller: pageController,
+        scrollDirection: widget.axis,
+        onPageChanged: widget.onItemFocusChanged,
+        itemCount: items.length,
+        itemBuilder: (ct, index) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.headerBuilder != null) widget.headerBuilder!(index),
+            Expanded(child: items[index]),
+          ],
+        ),
+      );
+    }
+
+    return ScrollSnapList(
       scrollDirection: widget.axis,
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: _buildOuterList(dragAndDropListTarget, parameters),
+      listController: _scrollController,
+      itemBuilder: (_, i) => items[i],
+      itemCount: items.length,
+      itemSize: widget.listWidth,
+      listViewPadding: const EdgeInsets.only(right: 30),
+      onItemFocus: (index) {
+        widget.onItemFocusChanged?.call(index);
+      },
     );
   }
 
   List<Widget> _buildOuterList(DragAndDropListTarget dragAndDropListTarget,
       DragAndDropBuilderParameters parameters) {
-    bool includeSeparators = widget.listDivider != null;
-    int childrenCount = _calculateChildrenCount(includeSeparators);
+    final bool includeSeparators = widget.listDivider != null;
+    final int childrenCount = _calculateChildrenCount(includeSeparators);
 
     return List.generate(childrenCount, (index) {
       return _buildInnerList(index, childrenCount, dragAndDropListTarget,
@@ -506,6 +549,9 @@ class DragAndDropListsState extends State<DragAndDropLists> {
   }
 
   int _calculateChildrenCount(bool includeSeparators) {
+    if (widget.enableSnap == true) {
+      return widget.children.length;
+    }
     if (includeSeparators)
       return (widget.children.length * 2) -
           (widget.listDividerOnLastChild ? 0 : 1) +
@@ -577,8 +623,10 @@ class DragAndDropListsState extends State<DragAndDropLists> {
 
   _internalOnListReorder(
       DragAndDropListInterface reordered, DragAndDropListInterface receiver) {
-    int reorderedListIndex = widget.children.indexWhere((e) => reordered == e);
-    int receiverListIndex = widget.children.indexWhere((e) => receiver == e);
+    final int reorderedListIndex =
+        widget.children.indexWhere((e) => reordered == e);
+    final int receiverListIndex =
+        widget.children.indexWhere((e) => receiver == e);
 
     int newListIndex = receiverListIndex;
 
@@ -645,7 +693,7 @@ class DragAndDropListsState extends State<DragAndDropLists> {
   _internalOnListDropOnLastTarget(
       DragAndDropListInterface newOrReordered, DragAndDropListTarget receiver) {
     // determine if newOrReordered is new or existing
-    int reorderedListIndex =
+    final int reorderedListIndex =
         widget.children.indexWhere((e) => newOrReordered == e);
 
     if (widget.listOnAccept != null)
@@ -692,19 +740,20 @@ class DragAndDropListsState extends State<DragAndDropLists> {
         _pointerXPosition != null) {
       double? newOffset;
 
-      var rb = context.findRenderObject()!;
+      final rb = context.findRenderObject()!;
       late Size size;
       if (rb is RenderBox)
         size = rb.size;
       else if (rb is RenderSliver) size = rb.paintBounds.size;
 
-      var topLeftOffset = localToGlobal(rb, Offset.zero);
-      var bottomRightOffset = localToGlobal(rb, size.bottomRight(Offset.zero));
+      final topLeftOffset = localToGlobal(rb, Offset.zero);
+      final bottomRightOffset =
+          localToGlobal(rb, size.bottomRight(Offset.zero));
 
       if (widget.axis == Axis.vertical) {
         newOffset = _scrollListVertical(topLeftOffset, bottomRightOffset);
       } else {
-        var directionality = Directionality.of(context);
+        final directionality = Directionality.of(context);
         if (directionality == TextDirection.ltr) {
           newOffset =
               _scrollListHorizontalLtr(topLeftOffset, bottomRightOffset);
@@ -725,12 +774,12 @@ class DragAndDropListsState extends State<DragAndDropLists> {
   }
 
   double? _scrollListVertical(Offset topLeftOffset, Offset bottomRightOffset) {
-    double top = topLeftOffset.dy;
-    double bottom = bottomRightOffset.dy;
+    final double top = topLeftOffset.dy;
+    final double bottom = bottomRightOffset.dy;
     double? newOffset;
 
-    var pointerYPosition = _pointerYPosition;
-    var scrollController = _scrollController;
+    final pointerYPosition = _pointerYPosition;
+    final scrollController = _scrollController;
     if (scrollController != null && pointerYPosition != null) {
       if (pointerYPosition < (top + _scrollAreaSize) &&
           scrollController.position.pixels >
@@ -754,12 +803,12 @@ class DragAndDropListsState extends State<DragAndDropLists> {
 
   double? _scrollListHorizontalLtr(
       Offset topLeftOffset, Offset bottomRightOffset) {
-    double left = topLeftOffset.dx;
-    double right = bottomRightOffset.dx;
+    final double left = topLeftOffset.dx;
+    final double right = bottomRightOffset.dx;
     double? newOffset;
 
-    var pointerXPosition = _pointerXPosition;
-    var scrollController = _scrollController;
+    final pointerXPosition = _pointerXPosition;
+    final scrollController = _scrollController;
     if (scrollController != null && pointerXPosition != null) {
       if (pointerXPosition < (left + _scrollAreaSize) &&
           scrollController.position.pixels >
@@ -787,12 +836,12 @@ class DragAndDropListsState extends State<DragAndDropLists> {
 
   double? _scrollListHorizontalRtl(
       Offset topLeftOffset, Offset bottomRightOffset) {
-    double left = topLeftOffset.dx;
-    double right = bottomRightOffset.dx;
+    final double left = topLeftOffset.dx;
+    final double right = bottomRightOffset.dx;
     double? newOffset;
 
-    var pointerXPosition = _pointerXPosition;
-    var scrollController = _scrollController;
+    final pointerXPosition = _pointerXPosition;
+    final scrollController = _scrollController;
     if (scrollController != null && pointerXPosition != null) {
       if (pointerXPosition < (left + _scrollAreaSize) &&
           scrollController.position.pixels <

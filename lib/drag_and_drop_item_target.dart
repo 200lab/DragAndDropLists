@@ -1,4 +1,3 @@
-import 'package:drag_and_drop_lists/drag_and_drop_builder_parameters.dart';
 import 'package:drag_and_drop_lists/drag_and_drop_list_interface.dart';
 import 'package:drag_and_drop_lists/drag_and_drop_lists.dart';
 import 'package:flutter/material.dart';
@@ -36,7 +35,6 @@ class _DragAndDropItemTarget extends State<DragAndDropItemTarget>
             AnimatedSize(
               duration: Duration(
                   milliseconds: widget.parameters.itemSizeAnimationDuration),
-              vsync: this,
               alignment: Alignment.bottomCenter,
               child: _hoveredDraggable != null
                   ? Opacity(

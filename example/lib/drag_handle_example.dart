@@ -1,8 +1,6 @@
 import 'package:drag_and_drop_lists/drag_and_drop_lists.dart';
-import 'package:example/navigation_drawer.dart';
+import 'package:example/navigation_drawer.dart' as navi;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/widgets.dart';
 
 class DragHandleExample extends StatefulWidget {
   DragHandleExample({Key? key}) : super(key: key);
@@ -86,7 +84,7 @@ class _DragHandleExample extends State<DragHandleExample> {
       appBar: AppBar(
         title: Text('Drag Handle'),
       ),
-      drawer: NavigationDrawer(),
+      drawer: navi.NavigationDrawer(),
       body: DragAndDropLists(
         children: _contents,
         onItemReorder: _onItemReorder,
